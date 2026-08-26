@@ -31,6 +31,7 @@ def generate(
     auth_ref: str,
     scope: list[str],
     findings: list[dict[str, Any]],
+    out_name: str = "report.md",
 ) -> Path:
     findings = sorted(findings, key=_sort_key)
     env = Environment(
@@ -50,6 +51,6 @@ def generate(
         counts=_counts(findings),
         findings=findings,
     )
-    out = Path(engagement_dir) / "report.md"
+    out = Path(engagement_dir) / out_name
     out.write_text(md, encoding="utf-8")
     return out

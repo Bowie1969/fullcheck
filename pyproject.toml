@@ -18,6 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 embed = ["sentence-transformers>=3.0"]
+m365 = ["msal>=1.28"]
 
 [project.scripts]
 fullcheck = "fullcheck.cli:app"

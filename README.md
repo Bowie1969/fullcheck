@@ -41,6 +41,26 @@ fullcheck triage <client-slug>                                 # LLM-rank findin
 fullcheck report <client-slug>                                 # emit markdown report
 ```
 
+### Microsoft 365 / Entra ID (`fullcheck m365`)
+
+External cloud-tenant assessment on the same spine. The target is the client's
+**tenant domain** (must be in `scope.yaml`); recon egresses only to Microsoft's
+shared endpoints, never to client infrastructure. Tiers: unauthenticated recon
+(PASSIVE) + account-validity enum (PROBE, no password sent), authenticated
+read-only Graph reads (SCAN, needs an app registration), and a FLOOR-only
+active-technique catalog behind the existing approval gate.
+
+```bash
+fullcheck m365 recon   <client> -d tenant.com --auth-ref REF [--users cand.txt]
+fullcheck m365 scan    <client> -d tenant.com --auth-ref REF   # authenticated Graph (needs .[m365])
+fullcheck m365 analyze <client> -d tenant.com                  # deterministic findings, no LLM
+fullcheck m365 report  <client> -d tenant.com --auth-ref REF   # -> m365_report.md
+fullcheck m365 catalog                                         # FLOOR-gated active techniques
+```
+
+See [docs/M365.md](docs/M365.md) for the app-registration scopes, credential
+options, and the full walkthrough.
+
 ### Parallel recon (the "swarm")
 
 `swarm` fans the recon/scan pipeline out across many targets concurrently. It is
@@ -128,7 +148,11 @@ fullcheck/
 
 - v0.1: external checkup (this) - 8 hours
 - v0.1+: parallel recon swarm + per-exploit HITL approval gate **(landed)**
-- v0.2: M365/Entra module + HITL blast-radius gate
+- v0.2: M365/Entra module + HITL blast-radius gate **(landed)** — `fullcheck
+  m365` subcommand, reuses this spine. Unauth tenant recon (PASSIVE/PROBE),
+  authenticated read-only Graph scan (SCAN), deterministic findings, and a
+  FLOOR-only active-technique catalog behind the existing approval gate. See
+  [docs/M365.md](docs/M365.md).
 - v0.3: FullCheck-Internal (on-site sibling tool) **(landed)** — `fcx` CLI,
   reuses this spine (dispatcher/approval/evidence/swarm). Internal blast-radius
   remap + structural FLOOR/CEILING technique catalog + per-CIDR `zone_ceilings`.

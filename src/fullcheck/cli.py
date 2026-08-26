@@ -14,6 +14,10 @@ from .intel.cve_cache import CveCache
 app = typer.Typer(add_completion=False, help="FullCheck v0.1 external checkup")
 console = Console()
 
+from .m365.cli import app as m365_app  # noqa: E402
+
+app.add_typer(m365_app, name="m365")
+
 ROOT = Path(__file__).resolve().parents[2]
 ENGAGEMENTS = ROOT / "engagements"
 SCOPE = ROOT / "scope.yaml"
