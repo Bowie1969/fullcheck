@@ -1,0 +1,45 @@
+# Per-engagement scope allowlist.
+# Copy to `scope.yaml` (git-ignored) and edit per client.
+# The dispatcher will REJECT any tool call whose target is not covered here.
+
+engagements:
+  example-q1:
+    auth_ref: "EXAMPLE-2026-Q1"
+    authorized_by: "Client Contact Name"
+    starts: "2026-09-01"
+    ends: "2026-09-30"
+    ceiling: "scan"          # passive | probe | scan | exploit | post_exploit
+    scope:
+      - "example.com"
+      - "*.example.com"
+    out_of_scope:
+      - "billing.example.com"
+    notes: |
+      Quarterly external checkup. External surface only. No exploitation.
+      Reference auth letter EXAMPLE-2026-Q1 filed under engagements/example-q1/auth.txt.
+
+  # Exploit-ceiling engagement. Setting ceiling: exploit ONLY makes exploitation
+  # *possible* — it does not make it automatic. Every exploit is still parked by
+  # the approval gate and runs only after a per-exploit human `confirm`
+  # (fullcheck exploit-propose -> approve -> exploit-run). Use this ceiling only
+  # when the signed authorization explicitly covers active exploitation.
+  # acme-redteam:
+  #   auth_ref: "ACME-RT-2026-001"
+  #   authorized_by: "Jane Client, CISO"
+  #   starts: "2026-10-01"
+  #   ends: "2026-10-14"
+  #   ceiling: "exploit"        # passive | probe | scan | exploit | post_exploit
+  #   scope:
+  #     - "10.10.0.0/16"
+  #     - "*.acme-lab.com"
+  #   out_of_scope:
+  #     - "10.10.99.0/24"       # production payment segment — never touch
+  #   notes: |
+  #     Active exploitation authorized in writing (ACME-RT-2026-001). Exploitation
+  #     is HITL-gated per action; production payment VLAN explicitly excluded.
+
+# Global caps applied to every engagement regardless of ceiling.
+rate_limits:
+  requests_per_second_per_host: 5
+  concurrent_scans_per_host: 2
+  max_workers: 50               # hard ceiling on swarm concurrency

@@ -1,0 +1,72 @@
+# External Attack Surface Checkup — {{ client }}
+
+**Engagement:** {{ engagement }}
+**Authorization reference:** {{ auth_ref }}
+**Scope:** {{ scope | join(", ") }}
+**Date generated:** {{ generated }}
+**Tool:** FullCheck v{{ version }}
+
+---
+
+## Executive summary
+
+This report documents the results of an authorized external attack-surface
+checkup. Testing was limited to passive reconnaissance and non-intrusive probing
+of assets within the authorized scope. No exploitation was performed.
+
+**Findings by severity:**
+
+| Severity | Count |
+|----------|-------|
+| Critical | {{ counts.critical }} |
+| High     | {{ counts.high }} |
+| Medium   | {{ counts.medium }} |
+| Low      | {{ counts.low }} |
+| Info     | {{ counts.info }} |
+
+{% if findings %}
+## Findings
+
+{% for f in findings %}
+### {{ loop.index }}. {{ f.title }}  — `{{ f.severity | upper }}`
+
+- **Asset:** {{ f.asset }}
+- **Confidence:** {{ f.confidence }}
+{% if f.cve %}- **CVE:** {{ f.cve | join(", ") }}{% endif %}
+- **Evidence:** `{{ f.evidence_artifact }}`
+
+{{ f.summary }}
+
+**Remediation:** {{ f.remediation }}
+
+---
+{% endfor %}
+{% else %}
+## Findings
+
+No findings were produced by this run. This does not prove the absence of
+vulnerabilities — only that the automated external checks surfaced nothing
+actionable within scope.
+{% endif %}
+
+## Methodology
+
+Passive subdomain enumeration, DNS resolution, HTTP probing and technology
+fingerprinting, top-port service discovery, passive crawling, Nuclei
+template matching (CVE / misconfig / exposed-panel / default-login), and
+typosquat enumeration. Findings were correlated against a local CVE cache and
+triaged for real-world impact.
+
+## Scope & authorization
+
+All activity was conducted under authorization reference **{{ auth_ref }}**
+against the scope listed above. Every tool invocation is recorded in the
+evidence manifest (`evidence/manifest.json`) with timestamp, SHA-256 hash,
+and blast-radius classification.
+
+## Limitations
+
+- External / non-intrusive only. Internal, authenticated, and business-logic
+  issues are out of scope for this checkup.
+- Automated tooling produces candidate findings; a human should validate each
+  before client remediation.

@@ -1,0 +1,34 @@
+# FullCheck-Internal example scope — copy relevant blocks into your scope.yaml.
+#
+# Internal engagements add three optional keys to an engagement:
+#   autonomy       gated | auto_low | aggressive   (default gated)
+#   interface      the drop box NIC on the client LAN (used by MITM techniques)
+#   zone_ceilings  per-CIDR ceiling overrides — cap fragile subnets below the
+#                  engagement ceiling. Enforced by the Dispatcher for BOTH the
+#                  swarm and `fcx attack`. Ceiling values: passive|probe|scan|
+#                  exploit|post_exploit  (probe == the internal "discovery" tier).
+#
+# Everything else (auth_ref, ceiling, scope, out_of_scope, rate_limits) is the
+# same schema the external tool already uses.
+
+engagements:
+  acme-internal:
+    auth_ref: NPT-ACME-20260901-001      # must match `fcx ... --auth-ref`
+    ceiling: post_exploit                # engagement-wide maximum blast radius
+    autonomy: aggressive                 # ceiling-only auto; FLOOR still gates
+    interface: eth0                      # drop box NIC facing the client LAN
+    scope:
+      - 10.10.0.0/16                     # corporate LAN (in scope)
+      - 192.168.50.0/24                  # server VLAN
+    out_of_scope:
+      - 10.10.99.0/24                    # guest wifi — never touch
+      - 10.10.13.37                      # the drop box's own address
+    zone_ceilings:
+      - cidr: 10.10.20.0/24              # OT / SCADA — fragile, discovery only
+        ceiling: probe
+      - cidr: 10.10.0.10/32              # domain controller — no exploitation
+        ceiling: scan
+
+rate_limits:
+  requests_per_second_per_host: 5
+  max_workers: 50
