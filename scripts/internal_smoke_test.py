@@ -28,7 +28,7 @@ from fullcheck.action import Action, BlastRadius  # noqa: E402
 from fullcheck.approval import ApprovalError, ApprovalGate  # noqa: E402
 from fullcheck.dispatcher import CeilingExceeded, Dispatcher  # noqa: E402
 from fullcheck.internal import catalog as cat  # noqa: E402
-from fullcheck.internal.autonomy import Decision, decide  # noqa: E402
+from fullcheck.internal.autonomy import Decision, decide, is_owned_lab  # noqa: E402
 from fullcheck.internal.tools import exploit as _exploit  # noqa: E402,F401 populate catalog
 
 PASS, FAIL = "  [ok]  ", "  [FAIL]"
@@ -64,12 +64,34 @@ check("CEILING auto in aggressive", decide("aggressive", webread, web_action) is
 check("CEILING(low_risk) auto in auto_low", decide("auto_low", webread, web_action) is Decision.AUTO)
 check("CEILING gated in gated", decide("gated", webread, web_action) is Decision.GATE)
 
+# 2b. auto_lab: floor lowers ONLY for an attested owned lab; fail-safe otherwise
+check("is_owned_lab: flag + SELF- auth ⇒ True",
+      is_owned_lab({"owned_lab": True, "auth_ref": "SELF-LAB-20260826-001"}) is True)
+check("is_owned_lab: missing flag ⇒ False",
+      is_owned_lab({"auth_ref": "SELF-LAB-1"}) is False)
+check("is_owned_lab: non-SELF auth_ref ⇒ False (client can't qualify)",
+      is_owned_lab({"owned_lab": True, "auth_ref": "NPT-ACME-001"}) is False)
+check("auto_lab AUTO-fires FLOOR on attested owned lab",
+      decide("auto_lab", spray, spray_action, owned_lab=True) is Decision.AUTO)
+check("auto_lab AUTO-fires post-exploit FLOOR on attested owned lab",
+      decide("auto_lab", cat.get("secretsdump"),
+             cat.get("secretsdump")._action("10.0.0.5", "eng", {}), owned_lab=True) is Decision.AUTO)
+check("auto_lab UNATTESTED fails safe to gated (FLOOR parked)",
+      decide("auto_lab", spray, spray_action, owned_lab=False) is Decision.GATE)
+
 # 3. run_auto refuses FLOOR even when called directly (dispatcher/evidence unused)
 try:
     spray.run_auto("10.0.0.5", "eng", dispatcher=None, evidence=None, params={"users": "u", "password": "p"})
     check("run_auto refuses FLOOR", False)
 except ApprovalError:
     check("run_auto refuses FLOOR", True)
+# 3b. run_auto STILL refuses FLOOR without the owned-lab attestation (default-safe)
+try:
+    spray.run_auto("10.0.0.5", "eng", dispatcher=None, evidence=None,
+                   params={"users": "u", "password": "p"}, owned_lab=False)
+    check("run_auto refuses FLOOR when owned_lab=False", False)
+except ApprovalError:
+    check("run_auto refuses FLOOR when owned_lab=False", True)
 
 # 4. per-CIDR zone_ceilings
 tmp = Path(tempfile.mkdtemp())

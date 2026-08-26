@@ -17,6 +17,10 @@ against untargeted hosts). This is operator-driven and scope-gated.
 - **`fcx`** (`src/fullcheck/internal/`) — on-site / internal sibling. Runs on an
   x86 drop box. Reuses the spine; adds an internal technique catalog with a
   structural FLOOR/CEILING and per-CIDR `zone_ceilings`. See `docs/INTERNAL.md`.
+  The `auto_lab` autonomy mode is the ONE carve-out that auto-runs FLOOR /
+  post-exploit with no human confirm — structurally confined to an attested
+  owned lab (`owned_lab: true` + `SELF-*` auth_ref), else it fails safe to
+  `gated`. It never applies to a client engagement.
 
 ## The safety spine — DO NOT weaken these
 

@@ -1,7 +1,12 @@
 # FullCheck-Internal example scope — copy relevant blocks into your scope.yaml.
 #
-# Internal engagements add three optional keys to an engagement:
-#   autonomy       gated | auto_low | aggressive   (default gated)
+# Internal engagements add these optional keys to an engagement:
+#   autonomy       gated | auto_low | aggressive | auto_lab   (default gated)
+#                  auto_lab is FULLY autonomous (FLOOR + post-exploit auto-run) and
+#                  works ONLY on an attested owned lab: it requires owned_lab: true
+#                  AND a SELF-* auth_ref, else it fails safe to gated. Never valid
+#                  on a client engagement. See docs/INTERNAL.md.
+#   owned_lab      true only for the operator's own lab (gates auto_lab). Default false.
 #   interface      the drop box NIC on the client LAN (used by MITM techniques)
 #   zone_ceilings  per-CIDR ceiling overrides — cap fragile subnets below the
 #                  engagement ceiling. Enforced by the Dispatcher for BOTH the

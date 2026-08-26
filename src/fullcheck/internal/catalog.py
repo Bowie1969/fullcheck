@@ -62,14 +62,21 @@ class InternalExploit(Exploit):
         evidence: Evidence,
         params: dict | None = None,
         timeout: int = 900,
+        owned_lab: bool = False,
     ) -> ExploitResult:
-        """Execute a CEILING-class technique WITHOUT a human token.
+        """Execute a technique WITHOUT a human token.
 
         Only ever called after autonomy.decide() returns AUTO. Still passes the
         Dispatcher (scope + engagement/zone ceiling + rate) and still writes the
         evidence chain — "no per-action confirm" is not "no controls".
+
+        The FLOOR re-check is the defence-in-depth backstop: a FLOOR technique
+        (incl. all post-exploitation) can only auto-run when `owned_lab` is True,
+        i.e. the `auto_lab` mode on an attested owned lab (autonomy.is_owned_lab).
+        The default `owned_lab=False` keeps every other path fail-closed, so a
+        routing bug still can't auto-fire a FLOOR technique off the lab.
         """
-        if self.gate_class is GateClass.FLOOR:
+        if self.gate_class is GateClass.FLOOR and not owned_lab:
             raise ApprovalError(
                 f"{self.name} is FLOOR-class — refusing to auto-run without "
                 f"human approval (use propose/approve/run instead)"

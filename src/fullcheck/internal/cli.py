@@ -201,12 +201,19 @@ def attack(
     from ..approval import ApprovalError, ApprovalGate
     from ..dispatcher import CeilingExceeded, Dispatcher, RateLimited, ScopeViolation
     from ..evidence import Evidence
-    from .autonomy import Decision, decide
+    from .autonomy import Decision, decide, is_owned_lab
     from .catalog import GateClass, get
     from .tools import exploit as _  # noqa: F401 — import populates the catalog
 
     eng = _require_auth(client, auth_ref)
     mode = str(eng.get("autonomy", "gated"))
+    owned_lab = is_owned_lab(eng)
+    if mode == "auto_lab" and not owned_lab:
+        console.print(
+            "[yellow]auto_lab not attested[/] — needs [bold]owned_lab: true[/] plus a "
+            "[bold]SELF-*[/] auth_ref on this engagement. Falling back to [bold]gated[/] "
+            "(FLOOR will be parked for approval, not auto-run)."
+        )
     params = _parse_params(param)
     params["_reason"] = reason
 
@@ -221,7 +228,7 @@ def attack(
     dispatcher = Dispatcher(SCOPE)
     gate = ApprovalGate(d)
     action = exploit._action(target, client, params)  # noqa: SLF001 — inside package
-    decision = decide(mode, exploit, action)
+    decision = decide(mode, exploit, action, owned_lab=owned_lab)
 
     cls_tag = "FLOOR" if exploit.gate_class is GateClass.FLOOR else "CEILING"
 
@@ -247,11 +254,17 @@ def attack(
         return
 
     # AUTO
+    if cls_tag == "FLOOR":  # only reachable via attested auto_lab (owned lab)
+        console.print(
+            f"[bold red]⚠ auto_lab AUTO-FIRING FLOOR[/] on attested owned lab "
+            f"[bold]{client}[/]: {technique} -> {target} (no human confirm; "
+            f"evidence-logged)."
+        )
     evidence = Evidence(d, auth_ref)
     try:
         res = exploit.run_auto(
             target=target, engagement=client, dispatcher=dispatcher,
-            evidence=evidence, params=params,
+            evidence=evidence, params=params, owned_lab=owned_lab,
         )
     except (ScopeViolation, CeilingExceeded, RateLimited) as e:
         console.print(f"[red]rejected by dispatcher[/]: {e}")

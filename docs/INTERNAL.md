@@ -38,11 +38,54 @@ Set per engagement in `scope.yaml` as `autonomy:`:
 - `auto_low` — enum + CEILING techniques flagged `low_risk` auto-run; the rest gated.
 - `aggressive` — every **CEILING** technique auto-runs within ceiling; only the
   **FLOOR** still gates. **This build ships configured for aggressive.**
+- `auto_lab` — **fully autonomous, FLOOR included** (password spray, MITM, and
+  all post-exploitation auto-run with no human token). Deliberately confined to
+  the operator's **own lab** — see below.
 
-The gate class is defined by the catalog (`internal/catalog.py`), **not** by the
-LLM and **not** by the autonomy dial — the same principle as lab-asset-suite's
-schema-defined impact. `run_auto` re-checks FLOOR itself, so a routing bug can't
-auto-fire a disruptive technique.
+For `gated`/`auto_low`/`aggressive`, the gate class is defined by the catalog
+(`internal/catalog.py`), **not** by the LLM and **not** by the autonomy dial —
+the same principle as lab-asset-suite's schema-defined impact. `run_auto`
+re-checks FLOOR itself, so a routing bug can't auto-fire a disruptive technique.
+`auto_lab` is the one mode that lowers that floor, and only on an attested lab.
+
+### `auto_lab` — autonomous exploitation on your own lab (and nowhere else)
+
+`auto_lab` removes the human confirm step for **every** technique, including the
+FLOOR class and post-exploitation. Because that is exactly the capability that
+would be catastrophic against a client, it is **structurally confined** — it only
+lowers the floor when the engagement is attested as the operator's own lab. The
+attestation (`autonomy.is_owned_lab`) requires **both**:
+
+- `owned_lab: true` on the engagement, **and**
+- an `auth_ref` that starts with `SELF-` (a self-authorization, not a client NPT).
+
+If either is missing, `auto_lab` **fails safe to `gated`** — FLOOR is parked for
+`fcx approve` exactly as normal. A client engagement therefore cannot auto-fire
+an exploit even if someone typos `autonomy: auto_lab` into its block. Two more
+controls remain in force:
+
+- The **Dispatcher ceiling still applies.** To auto-run post-exploitation the
+  engagement `ceiling` must actually be `post_exploit` (and `exploit` for the
+  exploit tier). `auto_lab` never bypasses scope / ceiling / zone / rate.
+- Every auto-fired FLOOR technique prints a loud `⚠ auto_lab AUTO-FIRING FLOOR`
+  line and is written to the evidence chain like any other action.
+
+A lab engagement therefore looks like:
+
+```yaml
+engagements:
+  home-lab:
+    auth_ref: SELF-LAB-20260826-001    # SELF-* → self-authorized
+    owned_lab: true                    # explicit owned-lab attestation
+    autonomy: auto_lab                 # fully autonomous (floor included)
+    ceiling: post_exploit              # required for post-exploit to actually run
+    interface: enp0s25
+    scope: [192.168.88.0/24]
+    out_of_scope: [192.168.88.10]
+```
+
+The gate class is still defined by the catalog; `auto_lab` doesn't reclassify
+anything, it authorizes the auto path for FLOOR **on an attested lab only**.
 
 - **CEILING** (auto-runnable): reversible / non-disruptive — unauth file reads,
   info-disclosure, offline work.
