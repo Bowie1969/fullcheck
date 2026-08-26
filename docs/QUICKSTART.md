@@ -15,7 +15,8 @@ business is **not** a substitute for written authorization. Email scope + dates
 ## 1. Setup (on the ParrotOS laptop, once)
 
 ```bash
-git clone <however-you-sync>/fullcheck   # or rsync from OneDrive
+# private repo — authenticate first (gh auth login), then:
+gh repo clone Bowie1969/fullcheck
 cd fullcheck
 bash scripts/setup_parrot.sh
 export PATH="$PATH:$HOME/go/bin"
