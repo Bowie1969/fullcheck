@@ -73,6 +73,9 @@ to the same evidence chain. Exploitation never runs here.
 fullcheck swarm <client-slug> --auth-ref REF --targets hosts.txt --workers 50
 ```
 
+To scale out — recon workers on your operator box, the triage LLM on a RunPod
+GPU — see the [RunPod runbook](docs/RUNPOD.md).
+
 ### Exploitation (two gates, one human confirmation per exploit)
 
 Exploitation is deliberately serial and human-gated. A worker or the operator
