@@ -34,6 +34,22 @@ engagements:
       - cidr: 10.10.0.10/32              # domain controller — no exploitation
         ceiling: scan
 
+  # Your OWN lab — the only place auto_lab actually lowers the floor. Requires
+  # BOTH owned_lab: true AND a SELF-* auth_ref, or it fails safe to gated.
+  # `fcx auto home-lab --auth-ref SELF-LAB-20260826-001 --range 192.168.88.0/24`
+  # runs the full recon -> LLM-chosen exploit -> post-exploit chain with no
+  # per-step confirm. NEVER put a client engagement in this shape.
+  home-lab:
+    auth_ref: SELF-LAB-20260826-001      # SELF-* → self-authorization
+    owned_lab: true                      # explicit owned-lab attestation
+    autonomy: auto_lab                   # fully autonomous (FLOOR + post-exploit)
+    ceiling: post_exploit                # required for post-exploit to actually run
+    interface: enp0s25                   # NIC MITM techniques bind to
+    scope:
+      - 192.168.88.0/24                  # the lab network you own
+    out_of_scope:
+      - 192.168.88.1                     # your own gateway/router
+
 rate_limits:
   requests_per_second_per_host: 5
   max_workers: 50

@@ -30,6 +30,18 @@ from fullcheck.dispatcher import CeilingExceeded, Dispatcher  # noqa: E402
 from fullcheck.internal import catalog as cat  # noqa: E402
 from fullcheck.internal.autonomy import Decision, decide, is_owned_lab  # noqa: E402
 from fullcheck.internal.tools import exploit as _exploit  # noqa: E402,F401 populate catalog
+from fullcheck.internal import planner  # noqa: E402
+from fullcheck.internal.autochain import run_autochain  # noqa: E402
+
+
+class _StubLlm:
+    """Stand-in OpenClaw client: returns canned planner output, hits no network."""
+
+    def __init__(self, steps):
+        self._steps = steps
+
+    def chat_json(self, system, user):  # noqa: D401 - matches OpenClawClient
+        return self._steps
 
 PASS, FAIL = "  [ok]  ", "  [FAIL]"
 _fails = 0
@@ -138,6 +150,67 @@ pending = spray.propose(
 )
 check("propose parked a token", bool(pending.token) and len(gate.pending()) == 1)
 check("parked command is the built argv", "nxc" in pending.command and "--continue-on-success" in pending.command)
+
+# 6. planner output validation is the trust boundary: catalog-bound, drops junk,
+#    and the LLM can never set impact/gating fields.
+menu = planner.technique_menu()
+check("technique_menu built from catalog", len(menu) == len(cat.CATALOG))
+check("menu carries param hints", any(m["params"] for m in menu))
+raw_steps = [
+    {"technique": "web-file-read", "target": "10.0.0.5", "params": {"url": "http://x/etc/passwd"}},
+    {"technique": "totally-made-up", "target": "10.0.0.5"},          # unknown -> dropped
+    {"technique": "password-spray", "target": ""},                    # blank target -> dropped
+    {"technique": "secretsdump", "target": "10.0.0.9",
+     "params": {"creds": "d/u:p@h", "blast_radius": "passive", "gate_class": "ceiling"}},
+]
+valid = planner.validate_steps(raw_steps, max_steps=10)
+check("validate_steps keeps only catalog-valid, non-blank steps", len(valid) == 2)
+check("validate_steps drops unknown technique",
+      all(s.technique in cat.CATALOG for s in valid))
+sd = next(s for s in valid if s.technique == "secretsdump")
+check("validate_steps strips model-set impact/gating fields",
+      "blast_radius" not in sd.params and "gate_class" not in sd.params and sd.params.get("creds") == "d/u:p@h")
+check("validate_steps honours max_steps cap",
+      len(planner.validate_steps([{"technique": "web-file-read", "target": "h", "params": {"url": "u"}}] * 5, max_steps=2)) == 2)
+check("_coerce_steps unwraps {'steps': [...]}",
+      planner._coerce_steps({"steps": [{"technique": "x", "target": "y"}]}) == [{"technique": "x", "target": "y"}])
+check("_coerce_steps rejects a bare object", planner._coerce_steps({"nope": 1}) == [])
+
+# 7. autochain end-to-end WITHOUT an owned-lab attestation: the LLM proposes a
+#    FLOOR technique and the chain PARKS it for a human — nothing auto-executes.
+lab_tmp = Path(tempfile.mkdtemp())
+lab_scope = lab_tmp / "scope.yaml"
+lab_scope.write_text(
+    "engagements:\n"
+    "  eng:\n"
+    "    auth_ref: NPT-CLIENT-001\n"       # NOT a SELF-* ref
+    "    ceiling: post_exploit\n"
+    "    autonomy: auto_lab\n"             # mislabeled auto_lab on a client -> must fail safe
+    "    scope: [10.0.0.0/16]\n"
+    "rate_limits:\n"
+    "  requests_per_second_per_host: 1000\n"
+)
+import yaml as _yaml  # noqa: E402
+
+lab_eng = _yaml.safe_load(lab_scope.read_text())["engagements"]["eng"]
+check("autochain test engagement is NOT an owned lab", is_owned_lab(lab_eng) is False)
+lab_eng_dir = lab_tmp / "engagements" / "eng"
+stub = _StubLlm([
+    {"technique": "password-spray", "target": "10.0.5.5",
+     "params": {"users": "users.txt", "password": "Autumn2026!"}, "reason": "smoke"},
+])
+res = run_autochain(
+    client="eng", auth_ref="NPT-CLIENT-001", eng=lab_eng, scope_path=lab_scope,
+    engagement_dir=lab_eng_dir, targets=[], workers=1, max_rounds=2, max_steps=5,
+    skip_recon=True, llm=stub, log=lambda m: None,
+)
+check("unattested auto_lab autochain auto-ran NOTHING", res["ran"] == [])
+check("unattested auto_lab autochain PARKED the FLOOR step", len(res["parked"]) == 1)
+lab_gate = ApprovalGate(lab_eng_dir)
+check("parked step is a real pending token", len(lab_gate.pending()) == 1)
+lab_manifest = lab_eng_dir / "evidence" / "manifest.json"
+check("no exploit evidence written (nothing executed)",
+      (not lab_manifest.exists()) or len(__import__("json").loads(lab_manifest.read_text()).get("entries", [])) == 0)
 
 print()
 if _fails:

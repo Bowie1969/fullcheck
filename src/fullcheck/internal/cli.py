@@ -279,6 +279,114 @@ def attack(
 
 
 @app.command()
+def auto(
+    client: str,
+    auth_ref: str = typer.Option(..., "--auth-ref"),
+    range_: Optional[List[str]] = typer.Option(
+        None, "--range", "-r", help="in-scope host or CIDR (repeatable)"
+    ),
+    targets_file: Optional[Path] = typer.Option(
+        None, "--targets", help="file with one host/CIDR per line"
+    ),
+    workers: int = typer.Option(10, "--workers", help="recon swarm concurrency (<=50)"),
+    max_rounds: int = typer.Option(4, "--max-rounds", help="plan/execute cycles (LLM calls)"),
+    max_steps: int = typer.Option(8, "--max-steps", help="steps the planner may return per round"),
+    skip_recon: bool = typer.Option(False, "--skip-recon", help="reuse existing evidence, skip the swarm"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="skip the one-time start confirmation"),
+):
+    """Fully autonomous chain: recon -> LLM picks exploits -> execute -> replan.
+
+    The LLM plans; the framework enforces. Every step still passes the Dispatcher
+    (scope + engagement/zone ceiling + rate) and writes the evidence chain, and
+    each step's FLOOR/CEILING class comes from the catalog, not the model.
+
+    FLOOR / post-exploit steps AUTO-FIRE only under `autonomy: auto_lab` on an
+    ATTESTED owned lab (owned_lab: true + a SELF-* auth_ref). On any other
+    engagement the same planner runs but every FLOOR step is PARKED for
+    `fcx approve` — the chain self-drives discovery and reversible reads only.
+    """
+    from ..llm.client import LlmError, OpenClawClient
+    from .autochain import run_autochain
+    from .autonomy import is_owned_lab
+
+    eng = _require_auth(client, auth_ref)
+    mode = str(eng.get("autonomy", "gated"))
+    owned_lab = is_owned_lab(eng)
+    fully_autonomous = mode == "auto_lab" and owned_lab
+
+    if fully_autonomous:
+        console.print(
+            "[bold red]⚠ FULLY AUTONOMOUS auto_lab[/] on attested owned lab "
+            f"[bold]{client}[/].\nThe LLM will choose and [bold red]AUTO-FIRE exploits "
+            "including FLOOR / post-exploitation[/] (spray, MITM, secretsdump, lateral "
+            "movement) with [bold]no per-step human confirmation[/], against:"
+        )
+        for s in (eng.get("scope") or []):
+            console.print(f"    [bold]{s}[/]")
+        console.print(
+            f"  ceiling=[bold]{eng.get('ceiling', 'probe')}[/]  "
+            f"auth_ref=[bold]{auth_ref}[/]  (Dispatcher + evidence still apply)"
+        )
+        if not yes and not typer.confirm("Start the autonomous chain?", default=False):
+            console.print("[yellow]aborted[/].")
+            raise typer.Exit(1)
+    elif mode == "auto_lab" and not owned_lab:
+        console.print(
+            "[yellow]auto_lab not attested[/] — needs [bold]owned_lab: true[/] plus a "
+            "[bold]SELF-*[/] auth_ref. Running the planner in [bold]gated[/] fallback: "
+            "FLOOR steps will be PARKED for [bold]fcx approve[/], not auto-run."
+        )
+    else:
+        console.print(
+            f"[cyan]autonomy={mode}[/] — the planner will auto-run only what this mode "
+            "allows; FLOOR steps are PARKED for [bold]fcx approve[/]."
+        )
+
+    targets: list[str] = list(range_ or [])
+    if targets_file:
+        if not targets_file.exists():
+            console.print(f"[red]targets file not found[/]: {targets_file}")
+            raise typer.Exit(1)
+        targets += [
+            ln.strip()
+            for ln in targets_file.read_text().splitlines()
+            if ln.strip() and not ln.strip().startswith("#")
+        ]
+    targets = list(dict.fromkeys(targets))
+    if not targets and not skip_recon:
+        console.print("[red]no targets[/]; pass --range/--targets, or --skip-recon to "
+                      "plan from existing evidence.")
+        raise typer.Exit(1)
+
+    d = _eng_dir(client)
+    d.mkdir(parents=True, exist_ok=True)
+    try:
+        summary = run_autochain(
+            client=client, auth_ref=auth_ref, eng=eng, scope_path=SCOPE,
+            engagement_dir=d, targets=targets, workers=workers,
+            max_rounds=max_rounds, max_steps=max_steps, skip_recon=skip_recon,
+            llm=OpenClawClient(), log=lambda m: console.print(m),
+        )
+    except LlmError as e:
+        console.print(f"[red]LLM unavailable — chain not started[/]: {e}")
+        raise typer.Exit(1)
+
+    (d / "autochain_summary.json").write_text(json.dumps(summary, indent=2))
+    console.print(
+        f"\n[green]chain done[/] rounds={summary['rounds']} "
+        f"auto-ran={len(summary['ran'])} parked={len(summary['parked'])} "
+        f"rejected={len(summary['rejected'])} errors={len(summary['errors'])}"
+    )
+    if summary["parked"]:
+        console.print(
+            f"[yellow]{len(summary['parked'])} FLOOR step(s) parked[/] — review and run:\n"
+            f"  [bold]fcx approve {client} --auth-ref {auth_ref}[/]\n"
+            f"  [bold]fcx run {client} --auth-ref {auth_ref}[/]"
+        )
+    console.print(f"Report: [bold]fcx report {client}[/]  (summary: autochain_summary.json)")
+
+
+@app.command()
 def queue(client: str):
     """List exploits awaiting human approval for this engagement."""
     import time as _t

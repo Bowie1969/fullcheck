@@ -87,6 +87,56 @@ engagements:
 The gate class is still defined by the catalog; `auto_lab` doesn't reclassify
 anything, it authorizes the auto path for FLOOR **on an attested lab only**.
 
+### `fcx auto` — the LLM drives the whole chain
+
+`fcx auto` is the autonomous driver: it runs recon, asks the LLM to **choose the
+next exploits from the catalog**, executes them, feeds the results back, and
+replans — a self-driving recon → exploit → post-exploit loop. The LLM is a
+**proposer only**; three properties (enforced in code, not trusted to the model)
+keep that as safe as `fcx attack`:
+
+1. **Catalog-bound.** The planner may only name a `technique` that already exists
+   in `internal/tools/exploit.py`. Unknown names, blank targets, and any
+   model-set `blast_radius`/`gate_class` fields are dropped in
+   `planner.validate_steps` before anything reaches the spine. The LLM never
+   writes a shell command — `build_cmd` stays deterministic in the catalog.
+2. **Impact is the catalog's, not the model's.** Each step's FLOOR/CEILING class
+   and blast radius come from the technique class. The autonomy router
+   (`autonomy.decide`) and `run_auto`'s FLOOR re-check are unchanged, so a step
+   auto-fires only where the mode already allows.
+3. **Enforcement is downstream and identical.** Every step passes the Dispatcher
+   (scope + engagement/zone ceiling + rate) and writes the evidence chain.
+
+Because of that, the mode is what decides how autonomous it actually is:
+
+- **`auto_lab` on an attested owned lab** → FLOOR / post-exploit steps auto-fire
+  with no per-step confirm (each prints the `⚠ auto_lab AUTO-FIRING FLOOR` line
+  and is evidence-logged). This is the "runs the whole chain itself" behaviour.
+- **any other engagement (incl. a client typo'd as `auto_lab`)** → the identical
+  planner runs, but every FLOOR step is **PARKED for `fcx approve`**. The chain
+  self-drives discovery and reversible reads and stops for a human on anything
+  disruptive. The degradation is structural (`autonomy.decide` +
+  `is_owned_lab`), not a flag in the driver.
+
+It is bounded by `--max-rounds` (LLM plan/execute cycles), `--max-steps` (steps
+per round), and a per-`(technique, target, params)` dedupe; a plan of `[]` ends
+the chain early. The reasoning LLM is served through OpenClaw (`OPENCLAW_*` env);
+if it is unreachable the chain **aborts** rather than falling back to running
+anything on its own.
+
+```bash
+# Fully autonomous on your attested lab (one start-confirmation, then no gates):
+fcx auto home-lab --auth-ref SELF-LAB-20260826-001 --range 192.168.88.0/24
+
+# Same planner on a client engagement: FLOOR steps park for approval instead.
+fcx auto acme-internal --auth-ref NPT-ACME-20260901-001 --range 10.10.0.0/24
+fcx approve acme-internal --auth-ref NPT-ACME-20260901-001
+fcx run     acme-internal --auth-ref NPT-ACME-20260901-001
+
+# Replan from evidence you already collected (skip the recon swarm):
+fcx auto home-lab --auth-ref SELF-LAB-20260826-001 --skip-recon -y
+```
+
 - **CEILING** (auto-runnable): reversible / non-disruptive — unauth file reads,
   info-disclosure, offline work.
 - **FLOOR** (always human-confirmed, even in aggressive): password spray

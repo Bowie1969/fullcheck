@@ -53,6 +53,8 @@ class InternalExploit(Exploit):
 
     gate_class: GateClass = GateClass.FLOOR   # default-deny
     low_risk: bool = False                    # eligible for `auto_low` mode
+    param_hint: str = ""                      # human/LLM hint: what params build_cmd needs
+                                              # (metadata only — never affects gating)
 
     def run_auto(
         self,

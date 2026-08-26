@@ -20,7 +20,14 @@ against untargeted hosts). This is operator-driven and scope-gated.
   The `auto_lab` autonomy mode is the ONE carve-out that auto-runs FLOOR /
   post-exploit with no human confirm — structurally confined to an attested
   owned lab (`owned_lab: true` + `SELF-*` auth_ref), else it fails safe to
-  `gated`. It never applies to a client engagement.
+  `gated`. It never applies to a client engagement. `fcx auto`
+  (`internal/autochain.py` + `internal/planner.py`) is the autonomous driver:
+  recon → the LLM PICKS the next exploits → execute → replan. The LLM is a
+  proposer only — it may name only techniques already in the catalog (validated
+  in `planner.validate_steps`), never a raw command, and impact class stays the
+  catalog's. Off an attested lab the same loop runs but FLOOR steps park for
+  `fcx approve`. If OpenClaw is unreachable the chain aborts, never falls back to
+  running techniques on its own.
 
 ## The safety spine — DO NOT weaken these
 
@@ -63,7 +70,11 @@ AU Cybercrime Act.
   OpenClaw/RunPod.
 - `llm/` — OpenClaw client (OpenAI-compatible; env `OPENCLAW_BASE/MODEL/API_KEY`).
   Triage prompt forbids inventing findings — it may only rank/dedupe/describe
-  real tool output.
+  real tool output. The internal planner (`internal/planner.py`, prompt in
+  `internal/plan_prompt.txt`) is the same idea for exploitation: it may only pick
+  technique names from the catalog and supply params; the framework builds the
+  command and owns every gate. Its output is validated (catalog-bound, junk
+  dropped) before any step reaches the Dispatcher or ApprovalGate.
 
 ## Environment
 
@@ -84,6 +95,7 @@ their wrappers skip gracefully elsewhere so the logic still tests on any box.
 ## Roadmap state
 
 v0.1 external + swarm + HITL exploit gate: landed. `fcx` internal: landed.
+`fcx auto` LLM-driven autonomous chain (auto_lab, catalog-bound planner): landed.
 Next requested: **v0.2 M365/Entra module** (+ its own scan-tier gating). Not
 started. Later: v0.4 richer queue, v0.5 Sliver integration (still HITL-gated),
 v1.0 dashboard + continuous monitoring.
